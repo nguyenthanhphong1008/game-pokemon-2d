@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PokéDeluge - Fan Game</title>
+<style>
+:root{--bg:#10131c;--card:#1a1f2e;--line:#2b3350;--tx:#e8ecf7;--mut:#8b94b3;--acc:#ffcb05;--red:#e5484d;--grn:#3ecf8e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#0b0e15;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;color:var(--acc);margin-right:auto}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px}
+button,select,input{font:inherit}
+button{background:var(--card);color:var(--tx);border:1px solid var(--line);padding:7px 12px;border-radius:8px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--acc)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.pri{background:var(--acc);color:#222;border-color:var(--acc);font-weight:700}
+button.danger{border-color:var(--red);color:var(--red)}
+input,select{background:#0b0e15;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+main{padding:0 16px 40px;max-width:1100px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.mon{background:#141827;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center;position:relative}
+.mon img{width:96px;height:96px;object-fit:contain}
+.mon small{color:var(--mut);display:block}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;color:#111;margin:1px;text-transform:capitalize}
+.ghost{filter:grayscale(1) brightness(.55) contrast(1.25) drop-shadow(0 0 10px #b46cff);opacity:.85;animation:fl 2.2s ease-in-out infinite}
+.shiny{filter:drop-shadow(0 0 8px #ffd54a)}
+@keyframes fl{50%{transform:translateY(-6px);opacity:.65}}
+.sil{filter:brightness(0) opacity(.35)}
+.bar{height:8px;background:#0b0e15;border-radius:99px;overflow:hidden;margin:3px 0}
+.bar>i{display:block;height:100%;background:var(--grn)}
+.bar.low>i{background:var(--red)}
+.arena{display:flex;justify-content:space-around;align-items:center;gap:10px;flex-wrap:wrap;min-height:230px}
+.side{text-align:center;min-width:200px}
+.side img{width:170px;height:170px;object-fit:contain}
+.log{background:#0b0e15;border-radius:8px;padding:8px;height:130px;overflow:auto;font-size:13px;color:var(--mut)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center}
+.form-badge{position:absolute;top:4px;right:4px;font-size:11px;padding:1px 6px;border-radius:99px}
+.b-shiny{background:#ffd54a;color:#222}.b-ghost{background:#7b3fe4;color:#fff}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#000c;padding:8px 16px;border-radius:99px;display:none;z-index:9}
+.mut{color:var(--mut)}
+</style>
+</head>
+<body>
+<header><h1>⚡ PokéDeluge <small class="mut">fan game</small></h1><span id="top"></span></header>
+<nav id="nav"></nav>
+<main id="app"><p class="mut">Đang tải dữ liệu Pokémon từ PokeAPI…</p></main>
+<div id="toast"></div>
+
+<script>
+/* ============ CẤU HÌNH ============ */
+const RATE = { shiny: 1/40, ghost: 1/25 };   // tỉ lệ gặp dạng Shiny / Ghost (có thể chỉnh)
+const API = 'https://pokeapi.co/api/v2/';
+const SPR = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+const BALLS = { poke:{n:'Poké Ball',m:1,p:10}, great:{n:'Great Ball',m:1.5,p:30}, ultra:{n:'Ultra Ball',m:2,p:60}, master:{n:'Master Ball',m:999,p:5000} };
+const MEGA_PRICE = 3000, STONE_PRICE = 1500;
+const TC = {normal:'#a8a77a',fire:'#ee8130',water:'#6390f0',electric:'#f7d02c',grass:'#7ac74c',ice:'#96d9d6',fighting:'#c22e28',poison:'#a33ea1',ground:'#e2bf65',flying:'#a98ff3',psychic:'#f95587',bug:'#a6b91a',rock:'#b6a136',ghost:'#735797',dragon:'#6f35fc',dark:'#705746',steel:'#b7b7ce',fairy:'#d685ad'};
+const CH = {
+normal:{rock:.5,steel:.5,ghost:0},fire:{fire:.5,water:.5,grass:2,ice:2,bug:2,rock:.5,dragon:.5,steel:2},
+water:{fire:2,water:.5,grass:.5,ground:2,rock:2,dragon:.5},electric:{water:2,electric:.5,grass:.5,ground:0,flying:2,dragon:.5},
+grass:{fire:.5,water:2,grass:.5,poison:.5,ground:2,flying:.5,bug:.5,rock:2,dragon:.5,steel:.5},ice:{fire:.5,water:.5,grass:2,ice:.5,ground:2,flying:2,dragon:2,steel:.5},
+fighting:{normal:2,ice:2,poison:.5,flying:.5,psychic:.5,bug:.5,rock:2,ghost:0,dark:2,steel:2,fairy:.5},poison:{grass:2,poison:.5,ground:.5,rock:.5,ghost:.5,steel:0,fairy:2},
+ground:{fire:2,electric:2,grass:.5,poison:2,flying:0,bug:.5,rock:2,steel:2},flying:{electric:.5,grass:2,fighting:2,bug:2,rock:.5,steel:.5},
+psychic:{fighting:2,poison:2,psychic:.5,dark:0,steel:.5},bug:{fire:.5,grass:2,fighting:.5,poison:.5,flying:.5,psychic:2,ghost:.5,dark:2,steel:.5,fairy:.5},
+rock:{fire:2,ice:2,fighting:.5,ground:.5,flying:2,bug:2,steel:.5},ghost:{normal:0,psychic:2,ghost:2,dark:.5},
+dragon:{dragon:2,steel:.5,fairy:0},dark:{fighting:.5,psychic:2,ghost:2,dark:.5,fairy:.5},
+steel:{fire:.5,water:.5,electric:.5,ice:2,rock:2,steel:.5,fairy:2},fairy:{fire:.5,fighting:2,poison:.5,dragon:2,dark:2,steel:.5}};
+
+/* ============ TRẠNG THÁI ============ */
+let N = 1025, SPECIES = [], MEGAS = [], AREAS = [];
+let S = null, view = 'home', B = null, dexPage = 0, dexQ = '', shopQ = '';
+const $ = s => document.querySelector(s);
+const cache = new Map();
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const rnd = n => Math.floor(Math.random() * n);
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2200)}
+async function j(u){ if(cache.has(u)) return cache.get(u); const r=await fetch(u); if(!r.ok) throw new Error('Lỗi tải '+u); const d=await r.json(); cache.set(u,d); return d; }
+const idOf = url => +url.split('/').filter(Boolean).pop();
+
+/* ============ DỮ LIỆU POKÉMON ============ */
+async function baseData(idOrName){
+  const p = await j(API+'pokemon/'+idOrName);
+  const s = await j(p.species.url);
+  const g = n => p.stats.find(x=>x.stat.name===n).base_stat;
+  return { sid:s.id, name:s.name, spriteId:p.id, types:p.types.map(t=>t.type.name),
+    base:{hp:g('hp'),atk:g('attack'),def:g('defense'),spa:g('special-attack'),spd:g('special-defense'),spe:g('speed')},
+    rate:s.capture_rate, chain:s.evolution_chain.url, legendary:s.is_legendary||s.is_mythical };
+}
+const bst = b => b.hp+b.atk+b.def+b.spa+b.spd+b.spe;
+function art(id,form){ return SPR+'other/official-artwork/'+(form==='shiny'?'shiny/':'')+id+'.png'; }
+function img(id,form,cls=''){
+  const fb = SPR+(form==='shiny'?'shiny/':'')+id+'.png';
+  return `<img loading="lazy" class="${form==='ghost'?'ghost':form==='shiny'?'shiny':''} ${cls}" src="${art(id,form)}" onerror="this.onerror=null;this.src='${fb}'">`;
+}
+const tags = ts => ts.map(t=>`<span class="tag" style="background:${TC[t]||'#999'}">${t}</span>`).join('');
+const megasFor = name => MEGAS.filter(m => m.base===name || m.base.startsWith(name+'-'));
+
+/* ============ CHỈ SỐ & CHIÊU ============ */
+const mult = m => m.form==='ghost'?1.12:m.form==='shiny'?1.06:1;
+const eff = m => m._mega ? {...m, types:m._mega.types, base:m._mega.base} : m;
+function stats(m){
+  const b=m.base,k=mult(m),L=m.lvl,f=x=>Math.floor((Math.floor(2*x*L/100)+5)*k);
+  return {hp:Math.floor((Math.floor(2*b.hp*L/100)+L+10)*k),atk:f(b.atk),def:f(b.def),spa:f(b.spa),spd:f(b.spd),spe:f(b.spe)};
+}
+const maxhp = m => stats(m).hp;
+const need = l => l*l*2+20;
+function moves(m){
+  const t=m.types, t2=t[1]||t[0];
+  return [{n:'Tackle',t:'normal',p:40,acc:100},{n:cap(t[0])+' Strike',t:t[0],p:65,acc:95},{n:cap(t2)+' Blast',t:t2,p:80,acc:90},{n:'Hyper Burst',t:'normal',p:110,acc:75}];
+}
+function calc(a0,d0,mv){
+  const A=eff(a0),D=eff(d0),sa=stats(A),sd=stats(D);
+  const phys=sa.atk>=sa.spa, a=phys?sa.atk:sa.spa, d=phys?sd.def:sd.spd;
+  let dmg=Math.floor(((2*A.lvl/5+2)*mv.p*a/d)/50)+2;
+  if(A.types.includes(mv.t)) dmg*=1.5;
+  const ef=D.types.reduce((x,t)=>x*((CH[mv.t]||{})[t]??1),1);
+  dmg=Math.floor(dmg*ef*(0.85+Math.random()*.15));
+  return {dmg:ef===0?0:Math.max(1,dmg),ef};
+}
+
+/* ============ LƯU TRỮ / TÀI KHOẢN ============ */
+const save = () => { if(S) localStorage.setItem('pdg_'+S.user, JSON.stringify(S)); };
+function login(u){
+  u=u.trim(); if(!u) return toast('Nhập tên!');
+  const raw=localStorage.getItem('pdg_'+u);
+  S = raw ? JSON.parse(raw) : null;
+  if(!S){ S={user:u,money:1000,balls:{poke:10,great:0,ultra:0,master:0},stones:1,mstones:[],mons:[],team:[],dex:{},uid:1,wins:0}; view='starter'; }
+  else view='home';
+  localStorage.setItem('pdg_last',u); render();
+}
+function logout(){ save(); S=null; B=null; render(); }
+const team = () => S.team.map(u=>S.mons.find(m=>m.uid===u)).filter(Boolean);
+const topLvl = () => Math.max(5,...S.mons.map(m=>m.lvl));
+function dexMark(sid,form){ const d=S.dex[sid]||(S.dex[sid]={n:0,s:0,g:0}); if(form==='shiny')d.s=1; else if(form==='ghost')d.g=1; else d.n=1; }
+function mk(d,lvl,form){ const m={uid:S.uid++,sid:d.sid,spriteId:d.spriteId,name:d.name,lvl,xp:0,form,types:d.types,base:d.base}; m.hp=maxhp(m); return m; }
+function rollForm(){ const r=Math.random(); return r<RATE.shiny?'shiny':r<RATE.shiny+RATE.ghost?'ghost':'normal'; }
+function addMon(m){ S.mons.push(m); if(S.team.length<6) S.team.push(m.uid); dexMark(m.sid,m.form); save(); }
+
+/* ============ TIẾN HÓA ============ */
+function findNode(n,name){ if(n.species.name===name) return n; for(const c of n.evolves_to){const r=findNode(c,name); if(r) return r;} return null; }
+async function evoInfo(m){
+  const c=await j((await baseData(m.sid)).chain);
+  const node=findNode(c.chain,m.name); if(!node) return {lvl:[],stone:[]};
+  const lvl=[],stone=[];
+  node.evolves_to.forEach(e=>{
+    const id=idOf(e.species.url), ds=e.evolution_details;
+    if(ds.some(d=>d.trigger.name==='level-up' && d.min_level && !d.item)) lvl.push({id,at:Math.min(...ds.filter(d=>d.min_level).map(d=>d.min_level))});
+    else stone.push({id,name:e.species.name});
+  });
+  return {lvl,stone};
+}
+async function evolveTo(m,id){
+  const old=m.name, d=await baseData(id), ratio=m.hp/maxhp(m);
+  Object.assign(m,{sid:d.sid,spriteId:d.spriteId,name:d.name,types:d.types,base:d.base});
+  m.hp=Math.max(1,Math.floor(maxhp(m)*ratio)); dexMark(m.sid,m.form); save();
+  return `✨ ${cap(old)} đã tiến hóa thành ${cap(d.name)}!`;
+}
+async function checkEvolve(m){
+  try{ const e=await evoInfo(m); const o=e.lvl.find(x=>m.lvl>=x.at); if(o){ const t=await evolveTo(m,o.id); blog(t); toast(t);} }catch(_){}
+}
+
+/* ============ CHIẾN ĐẤU ============ */
+const active = () => team().find(m=>m.hp>0);
+const foe = () => B.foes[B.fi];
+function blog(t){ if(B) B.log.push(t); }
+async function newWild(area){
+  if(!team().some(m=>m.hp>0)) return toast('Cả đội đã kiệt sức! Hãy vào Trung tâm hồi sinh.');
+  toast('Đang tìm Pokémon…');
+  let d,tries=0;
+  do{ d=await baseData(area.a+rnd(area.b-area.a+1)); tries++; } while((d.legendary||bst(d.base)>=580)&&Math.random()<.6&&tries<5);
+  const t=topLvl(), lvl=Math.max(2,Math.min(100,t-4+rnd(9)));
+  const f=mk(d,lvl,rollForm()); f.rate=d.rate;
+  B={foes:[f],fi:0,wild:true,log:[`Một ${cap(f.name)} hoang dã${f.form!=='normal'?' ('+f.form.toUpperCase()+')':''} xuất hiện! Lv.${lvl}`],over:false,area};
+  view='battle'; render();
+}
+async function newTrainer(){
+  if(!team().some(m=>m.hp>0)) return toast('Cả đội đã kiệt sức!');
+  toast('Tìm đối thủ…');
+  const foes=[], t=topLvl();
+  for(let i=0;i<3;i++){ const d=await baseData(1+rnd(N)); const m=mk(d,Math.max(3,t-3+rnd(6)),'normal'); foes.push(m); }
+  B={foes,fi:0,wild:false,log:['Huấn luyện viên thách đấu bạn! 3 Pokémon.'],over:false};
+  view='battle'; render();
+}
+function hit(a,d,mv,who){
+  if(Math.random()*100>mv.acc){ blog(`${who} ${cap(a.name)} dùng ${mv.n} nhưng trượt!`); return; }
+  const {dmg,ef}=calc(a,d,mv); d.hp=Math.max(0,d.hp-dmg);
+  blog(`${who} ${cap(a.name)} dùng ${mv.n}: -${dmg} HP${ef>1?' (hiệu quả!)':ef===0?' (vô hiệu)':ef<1?' (không hiệu quả lắm)':''}`);
+}
+function foeTurn(){ const f=foe(),p=active(); if(!p||f.hp<=0) return; const ms=moves(f); hit(f,p,ms[1+rnd(3)],'Đối thủ'); }
+async function afterTurn(){
+  const f=foe(), p=active();
+  if(f.hp<=0){
+    const pm=active()||team()[0];
+    const gain=Math.floor(f.lvl*(bst(f.base)/60)*(B.wild?1:1.5))+5;
+    blog(`🏆 ${cap(f.name)} gục ngã! +${gain} EXP`);
+    if(p){ p.xp+=gain; let up=false;
+      while(p.lvl<100&&p.xp>=need(p.lvl)){ p.xp-=need(p.lvl); const o=maxhp(p); p.lvl++; p.hp+=maxhp(p)-o; up=true; blog(`⬆️ ${cap(p.name)} lên Lv.${p.lvl}`); }
+      if(up) await checkEvolve(p); }
+    if(B.fi<B.foes.length-1){ B.fi++; blog(`Đối thủ gọi ${cap(foe().name)} Lv.${foe().lvl}`); }
+    else { const prize=B.wild?f.lvl*15:B.foes.reduce((s,x)=>s+x.lvl*40,0); S.money+=prize; S.wins++; blog(`💰 Nhận ${prize}¥`); endBattle(); }
+  } else if(!p){ const l=Math.floor(S.money*.1); S.money-=l; blog(`💀 Bạn thua! Mất ${l}¥`); endBattle(); }
+  clearMega(); save(); render();
+}
+function endBattle(){ B.over=true; team().forEach(m=>delete m._mega); }
+function clearMega(){ if(B && !B.megaActive) team().forEach(m=>delete m._mega); }
+async function act(i){ if(B.over||B.busy) return; B.busy=true;
+  const p=active(),f=foe(), pm=moves(eff(p))[i], fm=moves(f)[1+rnd(3)];
+  const pf=stats(eff(p)).spe>=stats(f).spe;
+  if(pf){ hit(p,f,pm,'Bạn:'); if(f.hp>0) foeTurn(); } else { foeTurn(); if(p.hp>0) hit(p,f,pm,'Bạn:'); }
+  B.busy=false; await afterTurn();
+}
+async function megaEvolve(name){
+  const p=active(); const entry=MEGAS.find(m=>m.name===name); if(!p||!entry||B.megaActive) return;
+  const d=await baseData(entry.name);
+  p._mega={types:d.types,base:d.base,spriteId:d.spriteId,name:entry.name}; B.megaActive=true;
+  dexMark(p.sid,p.form);
+  blog(`🔥 ${cap(p.name)} Mega tiến hóa thành ${cap(entry.name)}!`); render();
+}
+async function throwBall(k){
+  if(!B.wild||B.over||B.busy||S.balls[k]<=0) return; S.balls[k]--; const f=foe();
+  const mh=maxhp(f), p=Math.min(1,((3*mh-2*f.hp)*f.rate*BALLS[k].m)/(3*mh)/255);
+  blog(`Bạn ném ${BALLS[k].n}…`);
+  if(Math.random()<p){ delete f.rate; f.hp=Math.max(1,f.hp); addMon(f); blog(`🎉 Bắt được ${cap(f.name)}${f.form!=='normal'?' ['+f.form.toUpperCase()+']':''}!`); endBattle(); }
+  else { blog('Nó thoát ra!'); foeTurn(); }
+  await afterTurn();
+}
+function run(){ if(!B.wild||B.over) return; if(Math.random()<.65){ blog('Bạn chạy thoát!'); endBattle(); } else { blog('Không chạy được!'); foeTurn(); afterTurn(); return;} render(); }
+function swap(u){ const i=S.team.indexOf(u); if(i<0) return; S.team.splice(i,1); S.team.unshift(u); blog(`Đổi sang ${cap(active().name)}`); if(!B.over){foeTurn();afterTurn();return;} render(); }
+
+/* ============ GIAO DIỆN ============ */
+function hpBar(m){ const mh=maxhp(m),pc=Math.max(0,m.hp/mh*100); return `<div class="bar ${pc<25?'low':''}"><i style="width:${pc}%"></i></div><small>${m.hp}/${mh}</small>`; }
+function card(m,extra=''){
+  const e=eff(m), sp=m._mega?m._mega.spriteId:m.spriteId;
+  return `<div class="mon">${m.form!=='normal'?`<span class="form-badge b-${m.form}">${m.form}</span>`:''}${img(sp,m.form)}
+  <b>${cap(e.name||m.name)}</b><small>Lv.${m.lvl}</small>${tags(e.types)}${hpBar(m)}${extra}</div>`;
+}
+function renderNav(){
+  $('#nav').innerHTML = !S ? '' : [['home','🏠 Nhà'],['explore','🌿 Khám phá'],['mons','🎒 Pokémon'],['dex','📖 Pokédex'],['shop','🛒 Cửa hàng'],['center','🏥 Trung tâm']]
+    .map(([v,l])=>`<button onclick="go('${v}')" ${view===v?'class="pri"':''}>${l}</button>`).join('');
+  $('#top').innerHTML = S ? `<span>👤 ${S.user} · 💰 ${S.money}¥ · ⚪${S.balls.poke} 🔵${S.balls.great} 🟡${S.balls.ultra} 🟣${S.balls.master}</span> <button onclick="logout()">Thoát</button>` : '';
+}
+function go(v){ if(B&&!B.over&&v!=='battle'){ return toast('Đang trong trận!'); } view=v; B=null; render(); }
+
+async function render(){
+  renderNav(); const A=$('#app');
+  if(!S){ const last=localStorage.getItem('pdg_last')||''; A.innerHTML=`<div class="card"><h2>Đăng nhập / Tạo tài khoản</h2><p class="mut">Tài khoản lưu trong trình duyệt của bạn (localStorage).</p><div class="row"><input id="u" placeholder="Tên huấn luyện viên" value="${last}"><button class="pri" onclick="login($('#u').value)">Vào game</button></div><p class="mut">Tổng số loài: <b>${N}</b> · Mega: <b>${MEGAS.length}</b> dạng · Mỗi loài có 3 hình thái: Thường / Shiny / Ghost.</p></div>`; return; }
+  if(view==='starter') return starterView(A);
+  if(view==='home') return homeView(A);
+  if(view==='explore') return exploreView(A);
+  if(view==='battle') return battleView(A);
+  if(view==='mons') return monsView(A);
+  if(view==='dex') return dexView(A);
+  if(view==='shop') return shopView(A);
+  if(view==='center') return A.innerHTML=`<div class="card"><h2>🏥 Trung tâm Pokémon</h2><p>Hồi đầy HP toàn bộ Pokémon của bạn miễn phí.</p><button class="pri" onclick="heal()">Hồi sinh tất cả</button></div>`;
+}
+function heal(){ S.mons.forEach(m=>m.hp=maxhp(m)); save(); toast('Đã hồi phục toàn bộ!'); render(); }
+
+async function starterView(A){
+  A.innerHTML=`<div class="card"><h2>Chọn Pokémon khởi đầu</h2><div class="row">${[1,4,7,25,152,155,158,252,255,258].map(id=>`<button onclick="pickStarter(${id})">#${id}<br>${img(id,'normal')}</button>`).join('')}</div></div>`;
+}
+async function pickStarter(id){ const d=await baseData(id); addMon(mk(d,5,'normal')); view='home'; render(); }
+
+function homeView(A){
+  const owned=Object.keys(S.dex).length;
+  A.innerHTML=`<div class="card"><h2>Đội hình</h2><div class="grid">${team().map(m=>card(m)).join('')||'<p class="mut">Trống</p>'}</div></div>
+  <div class="card"><b>Thống kê:</b> Pokédex ${owned}/${N} · Trận thắng ${S.wins} · Đá tiến hóa ${S.stones} · Mega Stone ${S.mstones.length}/${MEGAS.length}</div>`;
+}
+function exploreView(A){
+  A.innerHTML=`<div class="card"><h2>Chọn khu vực</h2><p class="mut">Pokémon hoang dã sẽ có cấp độ quanh cấp cao nhất của bạn (Lv.${topLvl()}). Shiny ~${(RATE.shiny*100).toFixed(1)}%, Ghost ~${(RATE.ghost*100).toFixed(1)}%.</p>
+  <div class="row">${AREAS.map((a,i)=>`<button onclick="newWild(AREAS[${i}])">${a.n}<br><small class="mut">#${a.a}–${a.b}</small></button>`).join('')}</div>
+  <hr style="border-color:var(--line)"><button class="danger" onclick="newTrainer()">⚔️ Thách đấu huấn luyện viên (3 Pokémon, thưởng tiền)</button></div>`;
+}
+function battleView(A){
+  const f=foe(), p=active()||team()[0], e=eff(p), sp=p._mega?p._mega.spriteId:p.spriteId, ms=moves(e);
+  const owned=megasFor(p.name).filter(m=>S.mstones.includes(m.name));
+  A.innerHTML=`<div class="card"><div class="arena">
+    <div class="side">${img(f.spriteId,f.form)}<b>${cap(f.name)} Lv.${f.lvl}</b> ${f.form!=='normal'?`<span class="tag b-${f.form}" style="color:inherit">${f.form}</span>`:''}<div>${tags(f.types)}</div>${hpBar(f)}${B.wild?'':`<small>${B.fi+1}/${B.foes.length}</small>`}</div>
+    <div class="side">${img(sp,p.form)}<b>${cap(e.name||p.name)} Lv.${p.lvl}</b><div>${tags(e.types)}</div>${hpBar(p)}</div></div>
+    <div class="log" id="log">${B.log.slice(-8).join('<br>')}</div>
+    ${B.over?`<div class="row"><button class="pri" onclick="go('explore')">Tiếp tục</button></div>`:`
+    <div class="row">${ms.map((m,i)=>`<button onclick="act(${i})" style="border-color:${TC[m.t]}">${m.n}<br><small class="mut">${m.t} · ${m.p}</small></button>`).join('')}</div>
+    <div class="row">${owned.map(m=>`<button class="pri" ${B.megaActive?'disabled':''} onclick="megaEvolve('${m.name}')">🔥 ${cap(m.name)}</button>`).join('')}</div>
+    ${B.wild?`<div class="row">${Object.keys(BALLS).map(k=>`<button ${S.balls[k]<=0?'disabled':''} onclick="throwBall('${k}')">${BALLS[k].n} ×${S.balls[k]}</button>`).join('')}<button onclick="run()">🏃 Chạy</button></div>`:''}
+    <div class="row">Đổi: ${team().filter(m=>m.hp>0&&m.uid!==p.uid).map(m=>`<button onclick="swap(${m.uid})">${cap(m.name)} Lv.${m.lvl}</button>`).join('')||'<span class="mut">—</span>'}</div>`}
+  </div>`;
+  const l=$('#log'); if(l) l.scrollTop=l.scrollHeight;
+}
+async function monsView(A){
+  A.innerHTML=`<div class="card"><h2>Pokémon của bạn (${S.mons.length})</h2><div class="grid">${S.mons.map(m=>{
+    const inT=S.team.includes(m.uid);
+    return card(m,`<div class="row" style="justify-content:center"><button onclick="toggleTeam(${m.uid})">${inT?'Bỏ khỏi đội':'Vào đội'}</button><button onclick="useStone(${m.uid})">💎 Tiến hóa</button><button class="danger" onclick="sell(${m.uid})">Bán</button></div>`);
+  }).join('')}</div></div>`;
+}
+function toggleTeam(u){ const i=S.team.indexOf(u); if(i>=0){ if(S.team.length<=1) return toast('Cần ít nhất 1 Pokémon trong đội'); S.team.splice(i,1);} else { if(S.team.length>=6) return toast('Đội đã đủ 6'); S.team.push(u);} save(); render(); }
+function sell(u){ const m=S.mons.find(x=>x.uid===u); if(S.mons.length<=1) return toast('Không thể bán Pokémon cuối cùng'); if(!confirm(`Bán ${cap(m.name)} (${m.form}) giá ${m.lvl*20*(m.form!=='normal'?5:1)}¥?`)) return; S.money+=m.lvl*20*(m.form!=='normal'?5:1); S.mons=S.mons.filter(x=>x.uid!==u); S.team=S.team.filter(x=>x!==u); save(); render(); }
+async function useStone(u){
+  const m=S.mons.find(x=>x.uid===u); if(S.stones<=0) return toast('Hết Đá tiến hóa — mua ở cửa hàng');
+  const e=await evoInfo(m); if(!e.stone.length) return toast('Pokémon này không tiến hóa bằng đá/giao dịch (hoặc tiến hóa bằng cấp).');
+  let t=e.stone[0]; if(e.stone.length>1){ const n=prompt('Chọn: '+e.stone.map(x=>x.name).join(', '),e.stone[0].name); t=e.stone.find(x=>x.name===n); if(!t) return; }
+  S.stones--; toast(await evolveTo(m,t.id)); render();
+}
+async function dexView(A){
+  const per=60, list=SPECIES.filter(s=>!dexQ||s.name.includes(dexQ.toLowerCase())||String(s.id)===dexQ);
+  const pages=Math.ceil(list.length/per); dexPage=Math.min(dexPage,pages-1);
+  const cur=list.slice(dexPage*per,dexPage*per+per);
+  const done=Object.values(S.dex).filter(d=>d.n&&d.s&&d.g).length;
+  A.innerHTML=`<div class="card"><h2>Pokédex</h2><p class="mut">Đã gặp ${Object.keys(S.dex).length}/${N} · Đủ 3 dạng: ${done}</p>
+  <div class="row"><input id="dq" placeholder="Tìm tên / số" value="${dexQ}" onchange="dexQ=this.value;dexPage=0;render()">
+  <button onclick="dexPage=Math.max(0,dexPage-1);render()">◀</button><span>Trang ${dexPage+1}/${pages}</span><button onclick="dexPage=Math.min(${pages-1},dexPage+1);render()">▶</button>
+  ${AREAS.slice(0,-1).map(a=>`<button onclick="dexPage=Math.floor((${a.a}-1)/${per});dexQ='';render()">${a.n}</button>`).join('')}</div>
+  <div class="grid">${cur.map(s=>{const d=S.dex[s.id];return `<div class="mon">${img(s.id,'normal',d?'':'sil')}<b>#${s.id}</b><small>${d?cap(s.name):'???'}</small><small>${d?`${d.n?'●':'○'} ${d.s?'✦':'✧'} ${d.g?'👻':'·'}`:''}</small></div>`}).join('')}</div></div>`;
+}
+function shopView(A){
+  const ml=MEGAS.filter(m=>!shopQ||m.name.includes(shopQ.toLowerCase()));
+  A.innerHTML=`<div class="card"><h2>Cửa hàng</h2><div class="row">
+  ${Object.keys(BALLS).map(k=>`<button onclick="buy('ball','${k}',${BALLS[k].p})">${BALLS[k].n} — ${BALLS[k].p}¥</button>`).join('')}
+  <button onclick="buy('stone','',${STONE_PRICE})">💎 Đá tiến hóa — ${STONE_PRICE}¥</button></div></div>
+  <div class="card"><h2>Mega Stone (${S.mstones.length}/${MEGAS.length})</h2><p class="mut">Mua Mega Stone để Mega tiến hóa trong trận (1 lần/trận).</p>
+  <input placeholder="Tìm Mega…" value="${shopQ}" onchange="shopQ=this.value;render()">
+  <div class="grid" style="margin-top:8px">${ml.map(m=>{const o=S.mstones.includes(m.name);return `<div class="mon">${img(m.id,'normal')}<b>${cap(m.name)}</b><button ${o?'disabled':''} onclick="buy('mega','${m.name}',${MEGA_PRICE})">${o?'Đã có':MEGA_PRICE+'¥'}</button></div>`}).join('')}</div></div>`;
+}
+function buy(kind,k,p){
+  if(S.money<p) return toast('Không đủ tiền!'); S.money-=p;
+  if(kind==='ball') S.balls[k]++; else if(kind==='stone') S.stones++; else S.mstones.push(k);
+  save(); toast('Đã mua!'); render();
+}
+
+/* ============ KHỞI ĐỘNG ============ */
+(async function boot(){
+  try{
+    const sp=await j(API+'pokemon-species?limit=3000');
+    SPECIES=sp.results.map(r=>({id:idOf(r.url),name:r.name})).sort((a,b)=>a.id-b.id); N=SPECIES.length;
+    const all=await j(API+'pokemon?limit=3000');
+    MEGAS=all.results.filter(r=>/-mega/.test(r.name)).map(r=>({name:r.name,id:idOf(r.url),base:r.name.split('-mega')[0]}));
+    AREAS=[['Kanto',1,151],['Johto',152,251],['Hoenn',252,386],['Sinnoh',387,493],['Unova',494,649],['Kalos',650,721],['Alola',722,809],['Galar/Hisui',810,905],['Paldea',906,1025],['Mọi vùng',1,N]].map(([n,a,b])=>({n,a,b:Math.min(b,N)}));
+    render();
+  }catch(e){ $('#app').innerHTML=`<div class="card"><b>Không tải được dữ liệu.</b><p class="mut">Cần kết nối Internet để truy cập pokeapi.co và raw.githubusercontent.com. (${e.message})</p></div>`; }
+})();
+</script>
+</body>
+</html>
